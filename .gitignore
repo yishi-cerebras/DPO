@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+venv/
+*.venv
+*.venv/
+venv.bak/
+.venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Operating system
+*.DS_Store  # For Mac
+Thumbs.db  # For Windows
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Other
+*.swp  # Vim swap files
+*.swo  # Vim swap files
+*.swn  # Vim swap files
+*.log
+
+# poetry
+/.pypoetry-cache
