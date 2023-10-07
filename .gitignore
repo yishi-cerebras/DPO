@@ -39,3 +39,6 @@ Desktop.ini
 
 # poetry
 /.pypoetry-cache
+
+#wandb logs
+wandb

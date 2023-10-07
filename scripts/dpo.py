@@ -140,8 +140,6 @@ if __name__ == "__main__":
             name for name, buffer in model.named_buffers() if buffer.dtype == torch.bool
         ]
 
-    # model_ref = AutoModelForCausalLM.from_pretrained(script_args.model_name_or_path)
-
     tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -174,32 +172,29 @@ if __name__ == "__main__":
     
     # 5. get lora config
     if script_args.use_peft:
-        target_modules = ['q_proj','k_proj','v_proj','o_proj','gate_proj','down_proj','up_proj','lm_head']
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
-            target_modules = target_modules,
             lora_alpha=script_args.peft_lora_alpha,
             lora_dropout=0,
             bias="none",
             task_type="CAUSAL_LM",
         )
+        model_ref = None
     else:
+        model_ref = AutoModelForCausalLM.from_pretrained(script_args.model_name_or_path)
         peft_config = None
 
     # 6. initialize the DPO trainer
     dpo_trainer = DPOTrainer(
         model,
-        None,
-        # model_ref,
+        model_ref,
         args=training_args,
         beta=script_args.beta,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         max_length=script_args.max_length,
-        max_target_length=script_args.max_target_length,
         max_prompt_length=script_args.max_prompt_length,
-        generate_during_eval=False,
         peft_config=peft_config
     )
 
