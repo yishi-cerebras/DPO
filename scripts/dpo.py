@@ -25,7 +25,9 @@ from datasets import Dataset, load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, TrainingArguments
 from accelerate import Accelerator
 from trl import DPOTrainer
-from peft import LoraConfig
+import os
+from peft import LoraConfig, LoraModel
+import datetime
 import wandb
 
 
@@ -53,7 +55,7 @@ class ScriptArguments:
     )
     label_pad_token_id: Optional[int] = field(default=-100, metadata={"help": "label for non response tokens"})
     num_train_epochs: Optional[int] = field(default=1)
-    max_steps: Optional[int] = field(default=1000, metadata={"help": "max number of training steps"})
+    max_steps: Optional[int] = field(default=-1, metadata={"help": "max number of training steps"})
     max_grad_norm: Optional[float] = field(default=10)
     project: Optional[str] = field(default="dpo")
     run_name: Optional[str] = field(default="dpo_model")
@@ -78,6 +80,10 @@ class ScriptArguments:
             "https://github.com/huggingface/transformers/issues/22482#issuecomment-1595790992"
         },
     )
+    # output_dir
+    output_dir: Optional[str] = field(
+        default="/data/avishnevskiy/experiments",
+    )
 
 
 def extract_anthropic_prompt(prompt_and_response):
@@ -86,6 +92,14 @@ def extract_anthropic_prompt(prompt_and_response):
     search_term_idx = prompt_and_response.rfind(search_term)
     assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
     return prompt_and_response[: search_term_idx + len(search_term)]
+
+
+def get_experiment_name(exp_name):
+    """Transform experiment name, so we have different experiments"""
+    current_time = datetime.datetime.now()
+    formatted_time = current_time.strftime('%Y%m%d-%H%M%S')
+    exp_name = f"{exp_name}-{formatted_time}"
+    return exp_name
 
 
 def get_hh(split: str, sanity_check: bool = False, silent: bool = False, cache_dir: str = None) -> Dataset:
@@ -120,13 +134,15 @@ def get_hh(split: str, sanity_check: bool = False, silent: bool = False, cache_d
 if __name__ == "__main__":
     parser = HfArgumentParser(ScriptArguments)
     script_args = parser.parse_args_into_dataclasses()[0]
+    exp_name = get_experiment_name(script_args.run_name)
+    exp_dir = os.path.join(script_args.output_dir, exp_name)
 
     accelerator = Accelerator()
     if accelerator.is_main_process:
         # initialize wandb
         run = wandb.init(
             project=script_args.project,
-            name=script_args.run_name
+            name=exp_name
         )
 
     # 1. load a pretrained model
@@ -155,15 +171,18 @@ if __name__ == "__main__":
         per_device_train_batch_size=script_args.per_device_train_batch_size,
         num_train_epochs=script_args.num_train_epochs,
         max_grad_norm=script_args.max_grad_norm,
-        # max_steps=script_args.max_steps,
+        max_steps=script_args.max_steps,
         remove_unused_columns=False,
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
         learning_rate=script_args.learning_rate,
+        save_strategy="steps",
+        save_steps=0.2,
         evaluation_strategy="steps",
+        save_total_limit=2,
         logging_first_step=True,
         logging_steps=10,  # match results in blog post
         eval_steps=500,
-        output_dir="./test",
+        output_dir=exp_dir,
         optim="rmsprop",
         warmup_steps=150,
         report_to=script_args.report_to,
@@ -174,6 +193,7 @@ if __name__ == "__main__":
     if script_args.use_peft:
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
+            target_modules=['query_key_value', 'dense_h_to_4h', 'dense_4h_to_h'],
             lora_alpha=script_args.peft_lora_alpha,
             lora_dropout=0,
             bias="none",
@@ -181,7 +201,7 @@ if __name__ == "__main__":
         )
         model_ref = None
     else:
-        model_ref = AutoModelForCausalLM.from_pretrained(script_args.model_name_or_path)
+        model_ref = AutoModelForCausalLM.from_pretrained(script_args.model_name_or_path, torch_dtype=torch.float16)
         peft_config = None
 
     # 6. initialize the DPO trainer
@@ -200,3 +220,4 @@ if __name__ == "__main__":
 
     # 6. train
     dpo_trainer.train()
+    dpo_trainer.save_model(os.path.join(exp_dir, 'LATEST'))
