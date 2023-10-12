@@ -69,6 +69,8 @@ class ScriptArguments:
             'Use `"all"` to report to all integrations installed, `"none"` for no integrations.'
         },
     )
+    save_total_limit: Optional[int] = field(default=None)
+    save_steps: Optional[float] = field(default=0.5)
     use_peft: Optional[bool] = field(default=True)
     peft_lora_r: Optional[int] = field(default=64)
     peft_lora_alpha: Optional[int] = field(default=16)
@@ -176,9 +178,9 @@ if __name__ == "__main__":
         gradient_accumulation_steps=script_args.gradient_accumulation_steps,
         learning_rate=script_args.learning_rate,
         save_strategy="steps",
-        save_steps=0.2,
+        save_steps=script_args.save_steps,
         evaluation_strategy="steps",
-        save_total_limit=2,
+        save_total_limit=script_args.save_total_limit,
         logging_first_step=True,
         logging_steps=10,  # match results in blog post
         eval_steps=500,

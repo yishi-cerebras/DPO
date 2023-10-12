@@ -42,3 +42,6 @@ Desktop.ini
 
 #wandb logs
 wandb
+
+.env
+generations
