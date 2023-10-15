@@ -76,14 +76,6 @@ class ScriptArguments:
     )
 
 
-def extract_anthropic_prompt(prompt_and_response):
-    """Extract the anthropic prompt from a prompt and response pair."""
-    search_term = "\n\nAssistant:"
-    search_term_idx = prompt_and_response.rfind(search_term)
-    assert search_term_idx != -1, f"Prompt and response does not contain '{search_term}'"
-    return prompt_and_response[: search_term_idx + len(search_term)]
-
-
 def get_experiment_name(exp_name):
     """Transform experiment name, so we have different experiments"""
     current_time = datetime.datetime.now()
@@ -109,16 +101,7 @@ def get_hh(split: str, sanity_check: bool = False, silent: bool = False, cache_d
     dataset = load_dataset("Anthropic/hh-rlhf", split=split, cache_dir=cache_dir)
     if sanity_check:
         dataset = dataset.select(range(min(len(dataset), 1000)))
-
-    def split_prompt_and_responses(sample) -> Dict[str, str]:
-        prompt = extract_anthropic_prompt(sample["chosen"])
-        return {
-            "prompt": prompt,
-            "chosen": sample["chosen"][len(prompt) :],
-            "rejected": sample["rejected"][len(prompt) :],
-        }
-
-    return dataset.map(split_prompt_and_responses)
+    return dataset
 
 
 if __name__ == "__main__":
@@ -184,8 +167,7 @@ if __name__ == "__main__":
     if script_args.use_peft:
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
-            # target_modules=script_args.target_modules,
-            # target_modules=['query_key_value', 'dense_h_to_4h', 'dense_4h_to_h'],
+            target_modules=['c_attn', 'c_proj', 'dense_4h_to_h', 'c_fc', 'c_fc2', 'c_proj', 'lm_head'],
             lora_alpha=script_args.peft_lora_alpha,
             lora_dropout=0,
             bias="none",
@@ -196,10 +178,8 @@ if __name__ == "__main__":
 
     # 6. initialize the DPO trainer
     # Can be different templates for different datasets
-    instruction_template = "\n\nHuman:"
     response_template = "\n\nAssistant:"
     collator = DataCollatorForCompletionOnlyLM(
-        instruction_template=instruction_template,
         response_template=response_template,
         tokenizer=tokenizer, 
         mlm=False
@@ -208,6 +188,7 @@ if __name__ == "__main__":
     sft_trainer = SFTTrainer(
         model,
         args=training_args,
+        data_collator=collator,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
