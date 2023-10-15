@@ -45,3 +45,4 @@ wandb
 
 .env
 generations
+experiments

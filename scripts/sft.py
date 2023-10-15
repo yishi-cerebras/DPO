@@ -1,22 +1,3 @@
-# coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Note: you need to install transformers from main to run this script. See https://huggingface.co/docs/transformers/installation#install-from-source
-# TODO: bump transformers version in requirements at next release.
-
-# 0. imports
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
@@ -24,7 +5,7 @@ import torch
 from datasets import Dataset, load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, TrainingArguments
 from accelerate import Accelerator
-from trl import DPOTrainer
+from trl import DPOTrainer, SFTTrainer, DataCollatorForCompletionOnlyLM
 import os
 from peft import LoraConfig, LoraModel, AutoPeftModelForCausalLM
 import datetime
@@ -74,6 +55,7 @@ class ScriptArguments:
     use_peft: Optional[bool] = field(default=True)
     peft_lora_r: Optional[int] = field(default=64)
     peft_lora_alpha: Optional[int] = field(default=16)
+    # target_modules: Optional[list] = field(default=None)
     # debug argument for distributed training
     ignore_bias_buffers: Optional[bool] = field(
         default=False,
@@ -202,46 +184,50 @@ if __name__ == "__main__":
     if script_args.use_peft:
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
-            target_modules=['c_attn', 'c_proj', 'dense_4h_to_h', 'c_fc', 'c_fc2', 'c_proj', 'lm_head'],
+            # target_modules=script_args.target_modules,
+            # target_modules=['query_key_value', 'dense_h_to_4h', 'dense_4h_to_h'],
             lora_alpha=script_args.peft_lora_alpha,
             lora_dropout=0,
             bias="none",
             task_type="CAUSAL_LM",
         )
-        model_ref = None
     else:
-        model_ref = AutoModelForCausalLM.from_pretrained(
-            script_args.model_name_or_path,
-            torch_dtype=torch.float16,
-            trust_remote_code=True
-            )
         peft_config = None
 
     # 6. initialize the DPO trainer
-    dpo_trainer = DPOTrainer(
+    # Can be different templates for different datasets
+    instruction_template = "\n\nHuman:"
+    response_template = "\n\nAssistant:"
+    collator = DataCollatorForCompletionOnlyLM(
+        instruction_template=instruction_template,
+        response_template=response_template,
+        tokenizer=tokenizer, 
+        mlm=False
+    )
+
+    sft_trainer = SFTTrainer(
         model,
-        model_ref,
         args=training_args,
-        beta=script_args.beta,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        max_length=script_args.max_length,
-        max_prompt_length=script_args.max_prompt_length,
+        max_seq_length=script_args.max_length,
+        dataset_text_field="chosen",
         peft_config=peft_config
     )
 
     # 6. train
     if script_args.from_checkpoint is not None:
-        dpo_trainer.train(script_args.from_checkpoint)
+        sft_trainer.train(script_args.from_checkpoint)
     else:
-        dpo_trainer.train()
+        sft_trainer.train()
 
-    dpo_trainer.save_model(os.path.join(exp_dir, 'LATEST'))
+    sft_trainer.save_model(os.path.join(exp_dir, 'LATEST'))
+
     # save LoRa model
     if script_args.use_peft:
         output_dir = os.path.join(script_args.output_dir, "final_checkpoint")
-        dpo_trainer.model.save_pretrained(output_dir)
+        sft_trainer.model.save_pretrained(output_dir)
 
         # Free memory for merging weights
         del model
