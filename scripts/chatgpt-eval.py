@@ -5,6 +5,7 @@ import json
 from tqdm import tqdm
 import os
 from glob import glob
+import argparse
 import dotenv
 import time
 import re
@@ -93,6 +94,14 @@ async def main(generations, prompt, directory_path):
         await asyncio.gather(*tasks)
         return gpt_responses
 
+def print_results(generations):
+    count = len(generations)
+    hit = 0
+
+    for resp in gpt_responses:
+        hit += (resp['policy_first'] and resp['only_answer'][-1] == 'A') or (not resp['policy_first'] and resp['only_answer'][-1] == 'B')
+    print(f"Win rate: {hit/count}")
+
 def clean_up(directory_path):
     gpt_responses = []
 
@@ -106,8 +115,11 @@ def clean_up(directory_path):
         json.dump(gpt_responses, f)
 
 if __name__ == "__main__":
-    directory_path = 'btlm_beta0.1_shp'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--directory_path', type=str)
+    args = parser.parse_args()
 
+    directory_path = args.directory_path
     with open(f'../generations/{directory_path}-temp1.json', 'r') as f:
         generations = json.load(f)
     with open('../generations/prompt.txt', 'r') as f:
@@ -115,4 +127,6 @@ if __name__ == "__main__":
     
     os.makedirs(directory_path, exist_ok=True)
     asyncio.run(main(generations, prompt, directory_path))
+    
+    print_results(generations)
     clean_up(directory_path)
