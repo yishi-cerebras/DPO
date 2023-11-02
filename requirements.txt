@@ -7,3 +7,4 @@ peft>=0.3.0
 tyro>=0.5.7
 git+https://github.com/huggingface/trl.git
 wandb
+tenacity

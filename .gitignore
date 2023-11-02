@@ -46,3 +46,5 @@ wandb
 .env
 generations
 experiments
+files
+longeval/evaluation

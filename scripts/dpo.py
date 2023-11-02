@@ -19,12 +19,14 @@
 # 0. imports
 from dataclasses import dataclass, field
 from typing import Dict, Optional
-
+from collections import defaultdict
 import torch
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, HfArgumentParser, TrainingArguments
 from accelerate import Accelerator
 from trl import DPOTrainer
+from torch.utils.data import Dataset
+from tqdm import tqdm
 import os
 from peft import LoraConfig, LoraModel, AutoPeftModelForCausalLM
 import datetime
@@ -40,7 +42,7 @@ class ScriptArguments:
 
     # data parameters
     beta: Optional[float] = field(default=0.1, metadata={"help": "the beta parameter for DPO loss"})
-
+    dataset_name: Optional[str] = field(default='hh')
     # training parameters
     model_name_or_path: Optional[str] = field(default="gpt2", metadata={"help": "the model name"})
     learning_rate: Optional[float] = field(default=1e-3, metadata={"help": "optimizer learning rate"})
@@ -139,6 +141,76 @@ def get_hh(split: str, sanity_check: bool = False, silent: bool = False, cache_d
     return dataset.map(split_prompt_and_responses)
 
 
+def get_shp(split, sanity_check=False, top_k = 5):
+    """
+    The dataset is converted to a dictionary with the following structure:
+        {
+            'prompt': List[str],
+            'chosen': List[str],
+            'rejected': List[str],
+        }
+
+        Prompts should be structured as follows:
+          \n\nHuman: <prompt>\n\nAssistant:
+
+    highest top-k with score >= 2
+    """
+
+
+    dataset = load_dataset('stanfordnlp/SHP', split=split)
+    data = defaultdict(lambda: defaultdict(list))
+
+    for row in tqdm(dataset, desc='Processing SHP'):
+        prompt = '\n\nHuman: ' + row['history'] + '\n\nAssistant:'
+        responses = [' ' + row['human_ref_A'], ' ' + row['human_ref_B']]
+        scores = [row['score_A'], row['score_B']]
+        if prompt in data:
+            n_responses = len(data[prompt]['responses'])
+        else:
+            n_responses = 0
+        score_ratio = max(scores[0] / scores[1], scores[1] / scores[0])
+        if score_ratio < 2:
+            continue
+
+        # according to https://huggingface.co/datasets/stanfordnlp/SHP
+        # first one is chosen response
+        data[prompt]['pairs'].append((n_responses, n_responses + 1) if row['labels'] == 1 else (n_responses + 1, n_responses))
+        data[prompt]['responses'].extend(responses)
+        data[prompt]['scores'].append(score_ratio)
+
+    # filter only top-k for each prompt
+    filtered_data = []
+    for prompt in data.keys():
+        scores = [(score, i) for i, score in enumerate(data[prompt]['scores'])]
+        scores = sorted(scores, reverse=True)[:top_k]
+
+        for _, i in scores:
+            chosen_idx, rejected_idx = data[prompt]['pairs'][i]
+            filtered_data.append(
+                {
+                    'prompt': prompt,
+                    'chosen': data[prompt]['responses'][chosen_idx],
+                    'rejected': data[prompt]['responses'][rejected_idx]
+                }
+            )
+
+    if sanity_check:
+        sanity_len = min(len(filtered_data), 1000)
+        filtered_data = filtered_data[:sanity_len]
+
+    # dataset for preferences
+    class MyDataset(Dataset):
+        def __init__(self, reference_list):
+            self.reference_list = reference_list
+
+        def __len__(self):
+            return len(self.reference_list)
+
+        def __getitem__(self, index):
+            return self.reference_list[index]
+    return MyDataset(filtered_data)
+
+
 if __name__ == "__main__":
     parser = HfArgumentParser(ScriptArguments)
     script_args = parser.parse_args_into_dataclasses()[0]
@@ -165,17 +237,22 @@ if __name__ == "__main__":
             name for name, buffer in model.named_buffers() if buffer.dtype == torch.bool
         ]
 
-    tokenizer = AutoTokenizer.from_pretrained(script_args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained('cerebras/Cerebras-GPT-111M')
+
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     # 2. Load the Anthropic Helpful-Harmless dataset
-    train_dataset = get_hh("train", sanity_check=script_args.sanity_check)
+    if script_args.dataset_name == 'hh':
+        train_dataset = get_hh("train", sanity_check=script_args.sanity_check)
+        eval_dataset = get_hh("test", sanity_check=script_args.sanity_check)
+    elif script_args.dataset_name == 'shp':
+        train_dataset = get_shp("train", sanity_check=script_args.sanity_check)
+        eval_dataset = get_shp("test", sanity_check=script_args.sanity_check)
+    else:
+        raise NotImplementedError
 
-    # 3. Load evaluation dataset
-    eval_dataset = get_hh("test", sanity_check=script_args.sanity_check)
-
-    # 4. initialize training arguments:
+    # 3. initialize training arguments:
     training_args = TrainingArguments(
         per_device_train_batch_size=script_args.per_device_train_batch_size,
         num_train_epochs=script_args.num_train_epochs,
@@ -198,11 +275,11 @@ if __name__ == "__main__":
         bf16=True,
     )
     
-    # 5. get lora config
+    # 4. get lora config
     if script_args.use_peft:
         peft_config = LoraConfig(
             r=script_args.peft_lora_r,
-            target_modules=['c_attn', 'c_proj', 'dense_4h_to_h', 'c_fc', 'c_fc2', 'c_proj', 'lm_head'],
+            # target_modules=['c_attn', 'c_proj', 'dense_4h_to_h', 'c_fc', 'c_fc2', 'c_proj', 'lm_head'],
             lora_alpha=script_args.peft_lora_alpha,
             lora_dropout=0,
             bias="none",
@@ -217,7 +294,7 @@ if __name__ == "__main__":
             )
         peft_config = None
 
-    # 6. initialize the DPO trainer
+    # 5. initialize the DPO trainer
     dpo_trainer = DPOTrainer(
         model,
         model_ref,
