@@ -94,14 +94,6 @@ async def main(generations, prompt, directory_path):
         await asyncio.gather(*tasks)
         return gpt_responses
 
-def print_results(generations):
-    count = len(generations)
-    hit = 0
-
-    for resp in gpt_responses:
-        hit += (resp['policy_first'] and resp['only_answer'][-1] == 'A') or (not resp['policy_first'] and resp['only_answer'][-1] == 'B')
-    print(f"Win rate: {hit/count}")
-
 def clean_up(directory_path):
     gpt_responses = []
 
@@ -113,6 +105,17 @@ def clean_up(directory_path):
     shutil.rmtree(f'{directory_path}')
     with open(f'../generations/gpt_eval-{directory_path}-temp1.json', 'w') as f:
         json.dump(gpt_responses, f)
+
+def print_results(directory_path):
+    with open(f'../generations/gpt_eval-{directory_path}-temp1.json', 'r') as f:
+        generations = json.load(f)
+
+    count = len(generations)
+    hit = 0
+
+    for resp in generations:
+        hit += (resp['policy_first'] and resp['only_answer'][-1] == 'A') or (not resp['policy_first'] and resp['only_answer'][-1] == 'B')
+    print(f"Win rate: {hit/count}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -128,5 +131,5 @@ if __name__ == "__main__":
     os.makedirs(directory_path, exist_ok=True)
     asyncio.run(main(generations, prompt, directory_path))
     
-    print_results(generations)
     clean_up(directory_path)
+    print_results(directory_path)
