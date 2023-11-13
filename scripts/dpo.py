@@ -45,6 +45,7 @@ class ScriptArguments:
     dataset_name: Optional[str] = field(default='hh')
     # training parameters
     model_name_or_path: Optional[str] = field(default="gpt2", metadata={"help": "the model name"})
+    tokenizer_name: Optional[str] = field(default="gpt2")
     learning_rate: Optional[float] = field(default=1e-3, metadata={"help": "optimizer learning rate"})
     per_device_train_batch_size: Optional[int] = field(default=4, metadata={"help": "batch size per device"})
     gradient_accumulation_steps: Optional[int] = field(
@@ -237,7 +238,7 @@ if __name__ == "__main__":
             name for name, buffer in model.named_buffers() if buffer.dtype == torch.bool
         ]
 
-    tokenizer = AutoTokenizer.from_pretrained('cerebras/Cerebras-GPT-111M')
+    tokenizer = AutoTokenizer.from_pretrained(script_args.tokenizer_name)
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
