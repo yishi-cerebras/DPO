@@ -125,7 +125,7 @@ if __name__ == "__main__":
     directory_path = args.directory_path
     with open(f'../generations/{directory_path}-temp1.json', 'r') as f:
         generations = json.load(f)
-    with open('../generations/prompt.txt', 'r') as f:
+    with open('prompt.txt', 'r') as f:
         prompt = f.read()
     
     os.makedirs(directory_path, exist_ok=True)
