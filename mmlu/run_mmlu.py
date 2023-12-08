@@ -122,9 +122,15 @@ def load(ckpt_dir):
     n_gpus = torch.cuda.device_count()
 
     # get tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        ckpt_dir, padding_side="left"
-    )
+    try: 
+        tokenizer = AutoTokenizer.from_pretrained(
+            ckpt_dir, padding_side="left"
+        )
+    except:
+        tokenizer = AutoTokenizer.from_pretrained(
+            'cerebras/btlm-3b-8k-base', padding_side="left"
+        )
+
     tokenizer.pad_token_id = (
         0 if tokenizer.pad_token_id is None else tokenizer.pad_token_id
     )

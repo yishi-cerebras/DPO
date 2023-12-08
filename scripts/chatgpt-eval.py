@@ -119,11 +119,11 @@ def print_results(directory_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--directory_path', type=str)
+    parser.add_argument('--name', type=str)
     args = parser.parse_args()
 
-    directory_path = args.directory_path
-    with open(f'../generations/{directory_path}-temp1.json', 'r') as f:
+    name = args.name
+    with open(f'../generations/{name}-temp1.json', 'r') as f:
         generations = json.load(f)
     with open('prompt.txt', 'r') as f:
         prompt = f.read()

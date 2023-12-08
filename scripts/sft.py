@@ -176,8 +176,7 @@ if __name__ == "__main__":
     else:
         peft_config = None
 
-    # 6. initialize the DPO trainer
-    # Can be different templates for different datasets
+    
     response_template = "\n\nAssistant:"
     collator = DataCollatorForCompletionOnlyLM(
         response_template=response_template,

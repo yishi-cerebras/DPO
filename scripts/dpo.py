@@ -74,7 +74,7 @@ class ScriptArguments:
     )
     save_total_limit: Optional[int] = field(default=None)
     save_steps: Optional[float] = field(default=0.5)
-    use_peft: Optional[bool] = field(default=True)
+    use_peft: Optional[bool] = field(default=False)
     peft_lora_r: Optional[int] = field(default=64)
     peft_lora_alpha: Optional[int] = field(default=16)
     # debug argument for distributed training

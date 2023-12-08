@@ -1,19 +1,22 @@
 PYTHON="python"
-CKPT_DIR = "/data/avishnevskiy/experiments/trl_dpo_pythia_fp16-20231011-010059"
-checkpoints = [
-    "checkpoint-500",
-    "checkpoint-1000",
-    "checkpoint-1509",
-    "checkpoint-2012",
-    "LATEST"
-]
+# CKPT_DIR = "/data/avishnevskiy/experiments/dpo_btlm_alpaca-20231202-062603"
+# checkpoints = [
+#     "LATEST"
+# ]
 
 import os
+# checkpoints = [
+#         os.path.join(CKPT_DIR, ckpt_file) for ckpt_file in checkpoints
+# ]
+
 checkpoints = [
-        os.path.join(CKPT_DIR, ckpt_file) for ckpt_file in checkpoints
+    # ('/data/avishnevskiy/experiments/sft-btlm', 'sft-btlm'),
+    # ('EleutherAI/pythia-2.8b', 'pythia2.8'),
+    # ('lomahony/eleuther-pythia2.8b-hh-sft', 'pythia2.8-sft'),
+    ('/data/avishnevskiy/experiments/trl_dpo_pythia-20231130-013042/LATEST', 'pythia2.8-dpo')
 ]
 
-for ckpt in checkpoints:
-    output_file = f"pythia28_{ckpt.split('/')[-1]}_mmlu_5_shot.out"
+for ckpt, name in checkpoints:
+    output_file = f"{name}_mmlu_5_shot.out"
     cmd = f"{PYTHON} run_mmlu.py --checkpoint_dir {ckpt} --ntrain 5 --output_path {output_file}"
     os.system(cmd)
