@@ -9,7 +9,7 @@ This repository provides code and instructions for training a DPO model. While i
 
 **longeval** - directory contating code for running [LongEval](https://github.com/DachengLi1/LongChat).
 
-**notebooks** - notebooks used for generating scripts, graphs and etc. Currently not used.
+**notebooks** - notebooks (plots.ipynb) used for generating graphs and etc.
 
 
 **scripts** - all the scripts needed for:
